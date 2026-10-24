@@ -31,6 +31,8 @@ mise run test -- -k name  # pass extra args through to the task
 mise run check            # lint + typecheck + test (run before committing)
 mise run sync             # uv sync --all-groups
 mise run hass             # local Home Assistant on http://localhost:8123 (config in ./config)
+mise run change           # add a knope change file to .changeset/
+mise run release          # release pending changes (pushes + GitHub release; only when asked)
 ```
 
 When adding a task, define it under `[tasks.<name>]` in `mise.toml` with a `description`

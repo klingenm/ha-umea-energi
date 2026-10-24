@@ -19,7 +19,8 @@ API access goes through [umea-energi-api-client](https://github.com/klingenm/ume
 - `tests/` — pytest with `pytest-homeassistant-custom-component`
 - `config/` — local dev instance for `mise run hass` (`custom_components` is a symlink)
 - `pyproject.toml` — dependencies and ruff/ty/pytest config (not a package)
-- `mise.toml` — pinned tool versions (python, uv, ruff), env, and project tasks
+- `.changeset/` — pending change files; `knope.toml` — release config; `CHANGELOG.md` — written by knope
+- `mise.toml` — pinned tool versions (python, uv, ruff, knope), env, and project tasks
 - `mise.lock` — exact tool versions and checksums per platform (`mise lock`; never edit by hand)
 
 ## Tooling
@@ -41,7 +42,33 @@ mise run format     # format + autofix lint
 mise run check      # lint + typecheck + test — run before every commit
 mise run test -- -k <name>
 mise run hass       # run Home Assistant locally with the integration loaded
+mise run change     # describe a user-facing change for the next release
 ```
+
+## Releases
+
+Versioning uses [knope](https://knope.tech) change files (like JS changesets); commit messages don't affect versions.
+
+- Every user-facing change adds a change file in `.changeset/` in the same commit. `mise run change` creates one
+  interactively; or write it directly:
+
+  ```markdown
+  ---
+  default: minor
+  ---
+
+  # Short summary (becomes the changelog heading)
+
+  Optional details.
+  ```
+
+  Before 1.0, knope treats `major` as a minor bump and `minor` as a patch bump.
+- The version lives in both `pyproject.toml` and `manifest.json`; knope bumps both and a test keeps them in sync.
+  Never bump either by hand.
+- `mise run release` (from a clean, pushed `main`) bumps the version, updates `CHANGELOG.md` and `uv.lock`, commits,
+  pushes and creates the GitHub release `v<version>`, which HACS installs from. Only run it when the user asks;
+  preview with `mise run release -- --dry-run`. The first release keeps 0.1.0:
+  `mise run release -- --override-version 0.1.0`.
 
 ## Conventions
 

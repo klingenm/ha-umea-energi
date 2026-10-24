@@ -4,6 +4,7 @@ min_version = "2026.9.0"
 python = "3.14"
 uv = "0.13"
 ruff = "0.17"
+"github:knope-dev/knope" = { version = "0.23", version_prefix = "knope/v" }
 
 [env]
 # Make uv use the mise-managed interpreter instead of downloading its own.
@@ -39,6 +40,20 @@ run = "uv run pytest"
 [tasks.check]
 description = "Run lint, typecheck and tests"
 depends = ["lint", "typecheck", "test"]
+
+[tasks.change]
+description = "Add a change file (.changeset/) describing a user-facing change"
+run = "knope document-change"
+
+[tasks.release]
+description = "Release pending changesets: bump version, changelog, push, GitHub release (HACS)"
+# Extra args go to knope, e.g. `mise run release -- --dry-run`.
+run = '''
+test "$(git branch --show-current)" = main || { echo "Releases are made from main." >&2; exit 1; }
+git diff --quiet HEAD || { echo "Commit or stash your changes first." >&2; exit 1; }
+git fetch --quiet && test "$(git rev-parse HEAD)" = "$(git rev-parse @{u})" || { echo "main is not in sync with origin/main." >&2; exit 1; }
+GITHUB_TOKEN="${GITHUB_TOKEN:-$(gh auth token)}" knope release
+'''
 
 [tasks.hass]
 description = "Run a local Home Assistant instance with the integration loaded (config in ./config)"

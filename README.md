@@ -37,6 +37,11 @@ mise install     # install pinned tools
 mise run sync    # create .venv and install dependencies
 mise run check   # lint, typecheck, test
 mise run hass    # run Home Assistant on http://localhost:8123 with the integration loaded
+mise run change  # describe a change for the next release
 ```
+
+Changes are tracked with [knope](https://knope.tech) change files in `.changeset/`.
+`mise run release` bumps the version, updates the changelog, pushes, and creates a GitHub
+release, which HACS picks up as a new version.
 
 Run `mise tasks` to list all available tasks.

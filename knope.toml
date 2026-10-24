@@ -1,0 +1,57 @@
+# Release tooling: https://knope.tech
+# Run through mise: `mise run change` to add a change file, `mise run release` to release.
+
+[changes]
+# Only change files in .changeset/ drive versions and the changelog, not commit messages.
+ignore_conventional_commits = true
+
+[package]
+versioned_files = [
+    "pyproject.toml",
+    # Home Assistant and HACS read the integration version from the manifest.
+    { path = "custom_components/umea_energi/manifest.json", regex = '"version": "(?<version>[^"]+)"' },
+]
+changelog = "CHANGELOG.md"
+
+[[workflows]]
+name = "release"
+help_text = "Bump the version, update CHANGELOG.md, push, and create a GitHub release (which HACS installs from)"
+
+[[workflows.steps]]
+type = "PrepareRelease"
+
+# Knope doesn't know about uv.lock, which records the project's own version.
+[[workflows.steps]]
+type = "Command"
+command = "uv lock && git add uv.lock"
+shell = true
+
+[[workflows.steps]]
+type = "Command"
+command = 'git commit -m "chore: release $version"'
+
+[[workflows.steps]]
+type = "Command"
+command = "git push"
+
+[[workflows.steps]]
+type = "Release"
+
+[[workflows]]
+name = "document-change"
+help_text = "Create a change file to be included in the next release"
+
+[[workflows.steps]]
+type = "CreateChangeFile"
+
+[[workflows]]
+name = "get-version"
+help_text = "Get the current version of the project"
+
+[[workflows.steps]]
+type = "Command"
+command = 'echo "$version"'
+
+[github]
+owner = "klingenm"
+repo = "ha-umea-energi"

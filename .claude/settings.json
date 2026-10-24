@@ -24,6 +24,10 @@
     "deny": [
       "Read(./.env)",
       "Read(./.env.*)"
+    ],
+    "ask": [
+      "Bash(mise run release*)",
+      "Bash(knope release*)"
     ]
   }
 }

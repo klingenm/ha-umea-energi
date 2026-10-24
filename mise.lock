@@ -2,6 +2,49 @@
 
 lockfile_version = 3
 
+[[tools."github:knope-dev/knope"]]
+version = "0.23.2"
+backend = "github:knope-dev/knope"
+specifiers = ["0.23"]
+
+[tools."github:knope-dev/knope".options]
+version_prefix = "knope/v"
+
+[tools."github:knope-dev/knope"."platforms.linux-arm64"]
+checksum = "sha256:65ec774bd37d7d030100c896bd7fc635b11acade0fb039ffcb57c2b56be9da11"
+url = "https://github.com/knope-dev/knope/releases/download/knope/v0.23.2/knope-aarch64-unknown-linux-musl.tgz"
+url_api = "https://api.github.com/repos/knope-dev/knope/releases/assets/666846723"
+
+[tools."github:knope-dev/knope"."platforms.linux-arm64-musl"]
+checksum = "sha256:65ec774bd37d7d030100c896bd7fc635b11acade0fb039ffcb57c2b56be9da11"
+url = "https://github.com/knope-dev/knope/releases/download/knope/v0.23.2/knope-aarch64-unknown-linux-musl.tgz"
+url_api = "https://api.github.com/repos/knope-dev/knope/releases/assets/666846723"
+
+[tools."github:knope-dev/knope"."platforms.linux-x64"]
+checksum = "sha256:c64f6281e012fc8e046ebd6f30be76c583e88b9ad55b00c7b1809b030db92eee"
+url = "https://github.com/knope-dev/knope/releases/download/knope/v0.23.2/knope-x86_64-unknown-linux-musl.tgz"
+url_api = "https://api.github.com/repos/knope-dev/knope/releases/assets/666846724"
+
+[tools."github:knope-dev/knope"."platforms.linux-x64-musl"]
+checksum = "sha256:c64f6281e012fc8e046ebd6f30be76c583e88b9ad55b00c7b1809b030db92eee"
+url = "https://github.com/knope-dev/knope/releases/download/knope/v0.23.2/knope-x86_64-unknown-linux-musl.tgz"
+url_api = "https://api.github.com/repos/knope-dev/knope/releases/assets/666846724"
+
+[tools."github:knope-dev/knope"."platforms.macos-arm64"]
+checksum = "sha256:9ca0403d8e528af48b6451eb14ef4d3110b570a323e761bab8994fc14c04dc49"
+url = "https://github.com/knope-dev/knope/releases/download/knope/v0.23.2/knope-aarch64-apple-darwin.tgz"
+url_api = "https://api.github.com/repos/knope-dev/knope/releases/assets/666846725"
+
+[tools."github:knope-dev/knope"."platforms.macos-x64"]
+checksum = "sha256:e35cd3857477134a0ebd9395fa97eddcdf41217f6f8e426369d44f1b9c16df63"
+url = "https://github.com/knope-dev/knope/releases/download/knope/v0.23.2/knope-x86_64-apple-darwin.tgz"
+url_api = "https://api.github.com/repos/knope-dev/knope/releases/assets/666846726"
+
+[tools."github:knope-dev/knope"."platforms.windows-x64"]
+checksum = "sha256:ddde4b768353bde46aeacb4067f6ec50b5bccc6373afd4ac2c2396b144b5336a"
+url = "https://github.com/knope-dev/knope/releases/download/knope/v0.23.2/knope-x86_64-pc-windows-msvc.tgz"
+url_api = "https://api.github.com/repos/knope-dev/knope/releases/assets/666846730"
+
 [[tools.python]]
 version = "3.14.9"
 backend = "core:python"
