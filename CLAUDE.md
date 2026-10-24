@@ -20,6 +20,7 @@ API access goes through [umea-energi-api-client](https://github.com/klingenm/ume
 - `config/` — local dev instance for `mise run hass` (`custom_components` is a symlink)
 - `pyproject.toml` — dependencies and ruff/ty/pytest config (not a package)
 - `mise.toml` — pinned tool versions (python, uv, ruff), env, and project tasks
+- `mise.lock` — exact tool versions and checksums per platform (`mise lock`; never edit by hand)
 
 ## Tooling
 

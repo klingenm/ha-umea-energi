@@ -41,18 +41,23 @@ go *before* the task name; anything after it is passed to the task's command.
 
 ```sh
 mise ls --current            # tools and versions active in this directory
-mise install                 # install everything pinned in mise.toml
+mise install                 # install the versions locked in mise.lock
 mise use <tool>@<version>    # add or change a pin in mise.toml (e.g. mise use ruff@0.17)
 mise unuse <tool>            # remove a tool from mise.toml
 mise ls-remote <tool>        # list available versions
 mise latest <tool>           # latest available version
 mise outdated                # pinned tools with newer versions
 mise upgrade --bump          # upgrade and rewrite pins in mise.toml
+mise lock                    # refresh mise.lock (checksums/URLs) for the configured tools
+mise lock --bump             # re-resolve pins to the latest matching versions in mise.lock
 mise exec -- <cmd>           # run a command with mise's tools on PATH (when not activated)
 ```
 
-Pins in this repo use a major.minor prefix (e.g. `python = "3.14"`), so patch releases are
-picked up by `mise install`/`mise upgrade` without editing `mise.toml`.
+Pins in this repo use a major.minor prefix (e.g. `python = "3.14"`). `mise.lock` records the
+exact version, download URL and checksum per platform, so everyone installs the same build;
+commit it. Patch releases are picked up only when the lock is bumped (`mise lock --bump` or
+`mise upgrade`). After changing tools in `mise.toml`, run `mise lock` and commit both files.
+Never edit `mise.lock` by hand.
 
 ## Troubleshooting
 
