@@ -1,0 +1,107 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Logga in hos Umeå Energi",
+        "description": "Välj kundtyp och hur du vill logga in på Mina sidor.",
+        "data": {
+          "account_type": "Kundtyp",
+          "auth_method": "Logga in med"
+        }
+      },
+      "email": {
+        "title": "Logga in med e-post",
+        "description": "Umeå Energi skickar en engångskod till din e-post. Lämna lösenordet tomt för att logga in med enbart kod.",
+        "data": {
+          "username": "E-post",
+          "password": "Lösenord"
+        }
+      },
+      "email_code": {
+        "title": "Ange inloggningskod",
+        "description": "Ange koden som skickades till {username}.",
+        "data": {
+          "activation_key": "Inloggningskod"
+        }
+      },
+      "bankid_failed": {
+        "title": "BankID-inloggningen misslyckades",
+        "description": "BankID-inloggningen avbröts, gick ut eller misslyckades. Skicka för att försöka igen."
+      },
+      "customer": {
+        "title": "Välj kund",
+        "description": "Din inloggning har tillgång till flera kunder. Välj vilken som ska läggas till.",
+        "data": {
+          "customer_code": "Kundnummer"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Logga in igen",
+        "description": "Sessionen hos Umeå Energi har gått ut. Logga in igen för att fortsätta hämta förbrukning."
+      }
+    },
+    "progress": {
+      "bankid": "Öppna BankID-appen och skanna QR-koden, eller [öppna BankID på den här enheten]({auto_start_url}).\n\n{qr_code}"
+    },
+    "error": {
+      "cannot_connect": "Kunde inte ansluta till Umeå Energi.",
+      "invalid_auth": "E-postadressen eller lösenordet godkändes inte.",
+      "invalid_code": "Inloggningskoden godkändes inte."
+    },
+    "abort": {
+      "already_configured": "Kunden är redan konfigurerad.",
+      "cannot_connect": "Kunde inte ansluta till Umeå Energi.",
+      "no_customers": "Inloggningen har inga kunder att hämta förbrukning för.",
+      "reauth_successful": "Återautentiseringen lyckades.",
+      "wrong_account": "Inloggningen har inte tillgång till den konfigurerade kunden."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Inställningar för Umeå Energi",
+        "data": {
+          "update_interval": "Uppdateringsintervall"
+        },
+        "data_description": {
+          "update_interval": "Hur ofta förbrukningen hämtas. Mätvärden publiceras med fördröjning, så täta uppdateringar ger sällan mer data."
+        }
+      }
+    }
+  },
+  "device": {
+    "electricity": {
+      "name": "Umeå Energi el"
+    },
+    "district_heating": {
+      "name": "Umeå Energi fjärrvärme"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "latest_day_consumption": {
+        "name": "Förbrukning senaste dygnet"
+      },
+      "month_consumption": {
+        "name": "Förbrukning denna månad"
+      },
+      "latest_reading": {
+        "name": "Senaste mätvärde"
+      }
+    }
+  },
+  "selector": {
+    "account_type": {
+      "options": {
+        "private": "Privat",
+        "business": "Företag"
+      }
+    },
+    "auth_method": {
+      "options": {
+        "bankid": "BankID",
+        "email": "E-post"
+      }
+    }
+  }
+}

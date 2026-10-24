@@ -1,0 +1,13 @@
+# Local development instance, started with `mise run hass` (http://localhost:8123).
+# `default_config` needs packages that aren't in the dev venv, so load only what's needed to add
+# the integration and inspect its sensors and statistics.
+frontend:
+energy:
+history:
+logbook:
+
+logger:
+  default: info
+  logs:
+    custom_components.umea_energi: debug
+    umea_energi_api_client: debug

@@ -1,0 +1,43 @@
+[project]
+name = "ha-umea-energi"
+version = "0.1.0"
+description = "Home Assistant integration for Umeå Energi electricity and district heating consumption"
+readme = "README.md"
+authors = [
+    { name = "Magnus Klingenberg", email = "klingenberg.magnus@gmail.com" }
+]
+requires-python = ">=3.14.2"
+# Runtime requirements; keep in sync with `requirements` in custom_components/umea_energi/manifest.json.
+dependencies = [
+    "segno>=1.6.6",
+    "umea-energi-api-client>=0.1.0",
+]
+
+[tool.uv]
+# A Home Assistant custom integration, not an installable package.
+package = false
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF", "ASYNC"]
+
+[tool.ty.src]
+include = ["custom_components", "tests"]
+
+[tool.ty.terminal]
+error-on-warning = true
+
+[tool.pytest]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = ["--import-mode=importlib"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[dependency-groups]
+dev = [
+    "home-assistant-frontend==20260930.5",
+    "pytest-homeassistant-custom-component>=0.13.374",
+]

@@ -1,0 +1,107 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Sign in to Umeå Energi",
+        "description": "Choose your customer type and how to sign in to Mina sidor.",
+        "data": {
+          "account_type": "Customer type",
+          "auth_method": "Sign in with"
+        }
+      },
+      "email": {
+        "title": "Sign in with email",
+        "description": "Umeå Energi will email you a one-time login code. Leave the password empty to sign in with the code only.",
+        "data": {
+          "username": "Email",
+          "password": "Password"
+        }
+      },
+      "email_code": {
+        "title": "Enter login code",
+        "description": "Enter the code that was sent to {username}.",
+        "data": {
+          "activation_key": "Login code"
+        }
+      },
+      "bankid_failed": {
+        "title": "BankID login failed",
+        "description": "The BankID login was cancelled, expired or failed. Submit to try again."
+      },
+      "customer": {
+        "title": "Choose customer",
+        "description": "Your login has access to several customers. Choose the one to add.",
+        "data": {
+          "customer_code": "Customer number"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Sign in again",
+        "description": "The Umeå Energi session has expired. Sign in again to continue fetching consumption."
+      }
+    },
+    "progress": {
+      "bankid": "Open the BankID app and scan the QR code, or [open BankID on this device]({auto_start_url}).\n\n{qr_code}"
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to Umeå Energi.",
+      "invalid_auth": "The email address or password was not accepted.",
+      "invalid_code": "The login code was not accepted."
+    },
+    "abort": {
+      "already_configured": "This customer is already configured.",
+      "cannot_connect": "Failed to connect to Umeå Energi.",
+      "no_customers": "The login has no customers to fetch consumption for.",
+      "reauth_successful": "Re-authentication was successful.",
+      "wrong_account": "The login does not have access to the configured customer."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Umeå Energi options",
+        "data": {
+          "update_interval": "Update interval"
+        },
+        "data_description": {
+          "update_interval": "How often to fetch consumption. Readings are published with a delay, so frequent updates rarely add data."
+        }
+      }
+    }
+  },
+  "device": {
+    "electricity": {
+      "name": "Umeå Energi electricity"
+    },
+    "district_heating": {
+      "name": "Umeå Energi district heating"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "latest_day_consumption": {
+        "name": "Latest day consumption"
+      },
+      "month_consumption": {
+        "name": "Consumption this month"
+      },
+      "latest_reading": {
+        "name": "Latest reading"
+      }
+    }
+  },
+  "selector": {
+    "account_type": {
+      "options": {
+        "private": "Private",
+        "business": "Business"
+      }
+    },
+    "auth_method": {
+      "options": {
+        "bankid": "BankID",
+        "email": "Email"
+      }
+    }
+  }
+}

@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Environments
+.venv/
+.env
+mise.local.toml
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Claude Code local overrides
+.claude/settings.local.json
+
+# Generated API client (mise run generate)
+src/umea_energi_api_client/generated/
+
+# Local Home Assistant dev instance (`mise run hass`)
+config/*
+!config/configuration.yaml
+!config/custom_components

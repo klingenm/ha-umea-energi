@@ -1,0 +1,14 @@
+{
+  "domain": "umea_energi",
+  "name": "Umeå Energi",
+  "codeowners": ["@klingenm"],
+  "config_flow": true,
+  "dependencies": ["recorder"],
+  "documentation": "https://github.com/klingenm/ha-umea-energi",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/klingenm/ha-umea-energi/issues",
+  "loggers": ["umea_energi_api_client"],
+  "requirements": ["umea-energi-api-client==0.1.0", "segno==1.6.6"],
+  "version": "0.1.0"
+}
