@@ -1,6 +1,6 @@
 [project]
 name = "ha-umea-energi"
-version = "0.1.0"
+version = "0.2.0"
 description = "Home Assistant integration for Umeå Energi electricity and district heating consumption"
 readme = "README.md"
 authors = [
