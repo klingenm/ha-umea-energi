@@ -9,14 +9,17 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
-
-from custom_components.umea_energi.api import (
-    BankIdSession,
+from umea_energi_api_client import (
+    ApiError,
+    BankIdProgress,
+    Credentials,
+    CustomerType,
+    InvalidCredentialsError,
     Login,
-    Tokens,
-    UmeaEnergiApi,
-    UmeaEnergiAuthError,
+    UmeaEnergiClient,
+    User,
 )
+
 from custom_components.umea_energi.const import (
     CONF_ACCESS_TOKEN,
     CONF_ACCOUNT_TYPE,
@@ -24,6 +27,7 @@ from custom_components.umea_energi.const import (
     CONF_AUTH_METHOD,
     CONF_CUSTOMER_CODE,
     CONF_REFRESH_TOKEN,
+    CONF_REFRESH_TOKEN_EXPIRES_AT,
     CONF_UPDATE_INTERVAL,
     DOMAIN,
     AccountType,
@@ -32,8 +36,16 @@ from custom_components.umea_energi.const import (
 
 from .conftest import CUSTOMER_CODE
 
-LOGIN = Login(tokens=Tokens("access", "refresh"), customer_codes=[CUSTOMER_CODE], name="Anna")
-PENDING = BankIdSession(reference="ref", auto_start_token="ast", qr_code="qr", login=None)
+
+def make_login(customer_code: str | None = CUSTOMER_CODE, token: str = "access") -> Login:
+    return Login(
+        credentials=Credentials(access_token=token, refresh_token="refresh"),
+        user=User(id=1, display_name="Anna", email="anna@example.com", customer_code=customer_code),
+    )
+
+
+LOGIN = make_login()
+PENDING = BankIdProgress(reference="ref", auto_start_token="ast", qr_code="PHN2Zz4=", login=None)
 
 pytestmark = pytest.mark.usefixtures("mock_setup_entry")
 
@@ -42,6 +54,12 @@ pytestmark = pytest.mark.usefixtures("mock_setup_entry")
 def no_bankid_poll_delay() -> Generator[None]:
     with patch("custom_components.umea_energi.config_flow.BANKID_POLL_INTERVAL", 0):
         yield
+
+
+@pytest.fixture(autouse=True)
+def cancel_bankid() -> Generator[AsyncMock]:
+    with patch.object(UmeaEnergiClient, "cancel_bankid") as cancel:
+        yield cancel
 
 
 async def start_flow(
@@ -54,23 +72,32 @@ async def start_flow(
     )
 
 
+async def email_login(hass: HomeAssistant, result: ConfigFlowResult) -> ConfigFlowResult:
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_USERNAME: "anna@example.com", CONF_PASSWORD: "secret"}
+    )
+    return await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_ACTIVATION_KEY: "1234"}
+    )
+
+
 async def test_email_flow(hass: HomeAssistant) -> None:
     with (
-        patch.object(UmeaEnergiApi, "async_request_email_code") as request_code,
+        patch.object(UmeaEnergiClient, "start_email_login") as start,
         patch.object(
-            UmeaEnergiApi,
-            "async_login_email_code",
-            side_effect=[UmeaEnergiAuthError("bad code"), LOGIN],
-        ) as login,
+            UmeaEnergiClient,
+            "complete_email_login",
+            side_effect=[ApiError("Wrong code", 400), LOGIN],
+        ) as complete,
     ):
         result = await start_flow(hass, AuthMethod.EMAIL)
         assert result["step_id"] == "email"
 
         result = await hass.config_entries.flow.async_configure(
-            result["flow_id"], {CONF_USERNAME: "anna@example.com", CONF_PASSWORD: "secret"}
+            result["flow_id"], {CONF_USERNAME: " anna@example.com ", CONF_PASSWORD: "secret"}
         )
         assert result["step_id"] == "email_code"
-        request_code.assert_awaited_once_with("anna@example.com", "secret", AccountType.PRIVATE)
+        start.assert_awaited_once_with("anna@example.com", "secret", CustomerType.PRIVATE)
 
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], {CONF_ACTIVATION_KEY: "0000"}
@@ -78,9 +105,9 @@ async def test_email_flow(hass: HomeAssistant) -> None:
         assert result["errors"] == {"base": "invalid_code"}
 
         result = await hass.config_entries.flow.async_configure(
-            result["flow_id"], {CONF_ACTIVATION_KEY: " 1234 "}
+            result["flow_id"], {CONF_ACTIVATION_KEY: "1234"}
         )
-        login.assert_awaited_with("anna@example.com", "1234", AccountType.PRIVATE)
+        complete.assert_awaited_with("anna@example.com", "1234", CustomerType.PRIVATE)
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["result"].unique_id == CUSTOMER_CODE
@@ -90,63 +117,59 @@ async def test_email_flow(hass: HomeAssistant) -> None:
         CONF_CUSTOMER_CODE: CUSTOMER_CODE,
         CONF_ACCESS_TOKEN: "access",
         CONF_REFRESH_TOKEN: "refresh",
+        CONF_REFRESH_TOKEN_EXPIRES_AT: None,
         CONF_USERNAME: "anna@example.com",
     }
 
 
-async def test_email_flow_without_password(hass: HomeAssistant) -> None:
-    with patch.object(UmeaEnergiApi, "async_request_email_code") as request_code:
-        result = await start_flow(hass, AuthMethod.EMAIL)
-        result = await hass.config_entries.flow.async_configure(
-            result["flow_id"], {CONF_USERNAME: "anna@example.com"}
-        )
-
-    assert result["step_id"] == "email_code"
-    request_code.assert_awaited_once_with("anna@example.com", None, AccountType.PRIVATE)
-
-
-async def test_email_rejected(hass: HomeAssistant) -> None:
-    with patch.object(
-        UmeaEnergiApi, "async_request_email_code", side_effect=UmeaEnergiAuthError("no")
-    ):
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (InvalidCredentialsError("Incorrect email or password", 404), "invalid_auth"),
+        (ApiError("Request failed"), "cannot_connect"),
+    ],
+)
+async def test_email_login_errors(hass: HomeAssistant, error: ApiError, expected: str) -> None:
+    with patch.object(UmeaEnergiClient, "start_email_login", side_effect=error):
         result = await start_flow(hass, AuthMethod.EMAIL)
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], {CONF_USERNAME: "anna@example.com", CONF_PASSWORD: "wrong"}
         )
 
     assert result["step_id"] == "email"
-    assert result["errors"] == {"base": "invalid_auth"}
+    assert result["errors"] == {"base": expected}
 
 
-async def test_bankid_flow(hass: HomeAssistant) -> None:
-    completed = BankIdSession(reference="ref", auto_start_token=None, qr_code=None, login=LOGIN)
+async def test_bankid_flow(hass: HomeAssistant, cancel_bankid: AsyncMock) -> None:
+    completed = BankIdProgress(reference="ref", auto_start_token=None, qr_code=None, login=LOGIN)
     with (
-        patch.object(UmeaEnergiApi, "async_start_bankid", return_value=PENDING) as start,
-        patch.object(UmeaEnergiApi, "async_poll_bankid", side_effect=[PENDING, completed]) as poll,
+        patch.object(UmeaEnergiClient, "start_bankid", return_value=PENDING) as start,
+        patch.object(UmeaEnergiClient, "poll_bankid", side_effect=[PENDING, completed]) as poll,
     ):
         result = await start_flow(hass, AuthMethod.BANKID, AccountType.BUSINESS)
-        start.assert_awaited_once_with(AccountType.BUSINESS)
+        start.assert_awaited_once_with(CustomerType.COMPANY)
         assert result["type"] is FlowResultType.SHOW_PROGRESS
         placeholders = result["description_placeholders"]
         assert placeholders is not None
         assert "autostarttoken=ast" in placeholders["auto_start_url"]
-        assert "data:image/png;base64," in placeholders["qr_code"]
+        assert placeholders["qr_code"] == "![BankID QR code](data:image/svg+xml;base64,PHN2Zz4=)"
 
         await hass.async_block_till_done()
         result = await hass.config_entries.flow.async_configure(result["flow_id"])
 
-    poll.assert_awaited_with("ref", AccountType.BUSINESS)
+    poll.assert_awaited_with("ref", CustomerType.COMPANY)
     assert poll.await_count == 2
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_AUTH_METHOD] == AuthMethod.BANKID
     assert result["data"][CONF_ACCOUNT_TYPE] == AccountType.BUSINESS
     assert result["data"][CONF_ACCESS_TOKEN] == "access"
+    cancel_bankid.assert_not_awaited()
 
 
 async def test_bankid_failed_can_retry(hass: HomeAssistant) -> None:
     with (
-        patch.object(UmeaEnergiApi, "async_start_bankid", return_value=PENDING) as start,
-        patch.object(UmeaEnergiApi, "async_poll_bankid", side_effect=UmeaEnergiAuthError("no")),
+        patch.object(UmeaEnergiClient, "start_bankid", return_value=PENDING) as start,
+        patch.object(UmeaEnergiClient, "poll_bankid", side_effect=ApiError("Cancelled", 400)),
     ):
         result = await start_flow(hass, AuthMethod.BANKID)
         await hass.async_block_till_done()
@@ -159,62 +182,63 @@ async def test_bankid_failed_can_retry(hass: HomeAssistant) -> None:
         await hass.async_block_till_done()
 
 
-async def test_choose_customer(hass: HomeAssistant) -> None:
-    login = Login(tokens=LOGIN.tokens, customer_codes=["111", "222"], name=None)
+async def test_abandoned_bankid_login_is_cancelled(
+    hass: HomeAssistant, cancel_bankid: AsyncMock
+) -> None:
+    never_done = AsyncMock(side_effect=lambda *args: hass.loop.create_future())
     with (
-        patch.object(UmeaEnergiApi, "async_request_email_code"),
-        patch.object(UmeaEnergiApi, "async_login_email_code", return_value=login),
+        patch.object(UmeaEnergiClient, "start_bankid", return_value=PENDING),
+        patch.object(UmeaEnergiClient, "poll_bankid", never_done),
     ):
-        result = await start_flow(hass, AuthMethod.EMAIL)
-        result = await hass.config_entries.flow.async_configure(
-            result["flow_id"], {CONF_USERNAME: "anna@example.com"}
-        )
-        result = await hass.config_entries.flow.async_configure(
-            result["flow_id"], {CONF_ACTIVATION_KEY: "1234"}
-        )
-        assert result["step_id"] == "customer"
-        result = await hass.config_entries.flow.async_configure(
-            result["flow_id"], {CONF_CUSTOMER_CODE: "222"}
-        )
+        result = await start_flow(hass, AuthMethod.BANKID)
+        hass.config_entries.flow.async_abort(result["flow_id"])
+        await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_CUSTOMER_CODE] == "222"
+    cancel_bankid.assert_awaited_once_with("ref", CustomerType.PRIVATE)
+
+
+async def test_login_without_customer(hass: HomeAssistant) -> None:
+    with (
+        patch.object(UmeaEnergiClient, "start_email_login"),
+        patch.object(UmeaEnergiClient, "complete_email_login", return_value=make_login(None)),
+    ):
+        result = await email_login(hass, await start_flow(hass, AuthMethod.EMAIL))
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "no_customers"
 
 
 async def test_already_configured(hass: HomeAssistant, mock_config_entry: MockConfigEntry) -> None:
     mock_config_entry.add_to_hass(hass)
     with (
-        patch.object(UmeaEnergiApi, "async_request_email_code"),
-        patch.object(UmeaEnergiApi, "async_login_email_code", return_value=LOGIN),
+        patch.object(UmeaEnergiClient, "start_email_login"),
+        patch.object(UmeaEnergiClient, "complete_email_login", return_value=LOGIN),
     ):
-        result = await start_flow(hass, AuthMethod.EMAIL)
-        result = await hass.config_entries.flow.async_configure(
-            result["flow_id"], {CONF_USERNAME: "anna@example.com"}
-        )
-        result = await hass.config_entries.flow.async_configure(
-            result["flow_id"], {CONF_ACTIVATION_KEY: "1234"}
-        )
+        result = await email_login(hass, await start_flow(hass, AuthMethod.EMAIL))
 
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "already_configured"
 
 
 @pytest.mark.parametrize(
-    ("customer_codes", "reason"),
-    [([CUSTOMER_CODE, "999"], "reauth_successful"), (["999"], "wrong_account")],
+    ("customer_code", "reason"),
+    [(CUSTOMER_CODE, "reauth_successful"), ("999", "wrong_account")],
 )
 async def test_reauth(
     hass: HomeAssistant,
     mock_config_entry: MockConfigEntry,
-    customer_codes: list[str],
+    customer_code: str,
     reason: str,
 ) -> None:
     mock_config_entry.add_to_hass(hass)
     old_access_token = mock_config_entry.data[CONF_ACCESS_TOKEN]
-    login = Login(Tokens("new-access", "new-refresh"), customer_codes=customer_codes, name=None)
     with (
-        patch.object(UmeaEnergiApi, "async_request_email_code"),
-        patch.object(UmeaEnergiApi, "async_login_email_code", AsyncMock(return_value=login)),
+        patch.object(UmeaEnergiClient, "start_email_login"),
+        patch.object(
+            UmeaEnergiClient,
+            "complete_email_login",
+            return_value=make_login(customer_code, token="new-access"),
+        ),
     ):
         result = await mock_config_entry.start_reauth_flow(hass)
         assert result["step_id"] == "reauth_confirm"
@@ -224,12 +248,7 @@ async def test_reauth(
             result["flow_id"],
             {CONF_ACCOUNT_TYPE: AccountType.PRIVATE, CONF_AUTH_METHOD: AuthMethod.EMAIL},
         )
-        result = await hass.config_entries.flow.async_configure(
-            result["flow_id"], {CONF_USERNAME: "anna@example.com"}
-        )
-        result = await hass.config_entries.flow.async_configure(
-            result["flow_id"], {CONF_ACTIVATION_KEY: "1234"}
-        )
+        result = await email_login(hass, result)
 
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == reason

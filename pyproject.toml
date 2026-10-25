@@ -9,8 +9,7 @@ authors = [
 requires-python = ">=3.14.2"
 # Runtime requirements; keep in sync with `requirements` in custom_components/umea_energi/manifest.json.
 dependencies = [
-    "segno>=1.6.6",
-    "umea-energi-api-client>=0.1.0",
+    "umea-energi-api-client>=0.1.1",
 ]
 
 [tool.uv]

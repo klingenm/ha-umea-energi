@@ -7,13 +7,16 @@ Custom integration that loads your electricity and district heating consumption 
 ## Features
 
 - Private and business customers.
-- Sign in with **BankID** (QR code or BankID on the same device) or with an **emailed login code**
-  (with or without a password).
-- Hourly consumption is imported as long-term statistics for the **energy dashboard**:
-  - `umea_energi:electricity_consumption_<customer>`
-  - `umea_energi:district_heating_consumption_<customer>`
-- Sensors for each utility: latest full day's consumption, consumption this month, and the time of
-  the latest reading.
+- Sign in with **BankID** (QR code or BankID on the same device) or with your Mina sidor **email
+  and password** plus the login code Umeå Energi emails you.
+- Finds your electricity and district heating meter points from your contracts.
+- Hourly consumption per meter point is imported as long-term statistics for the **energy
+  dashboard**:
+  - `umea_energi:electricity_consumption_<meter point>`
+  - `umea_energi:district_heating_consumption_<meter point>`
+- A device per meter point with sensors for the latest full day's consumption, consumption this
+  month, and the time of the latest reading. Meters added later show up after reloading the
+  integration.
 - Configurable update interval (default 60 minutes). Readings are published with a delay, so the
   most recent hours appear later.
 - When the session can no longer be refreshed, Home Assistant asks you to sign in again.

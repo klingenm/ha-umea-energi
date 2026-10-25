@@ -15,8 +15,9 @@ from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, Utility
-from .coordinator import UmeaEnergiConfigEntry, UmeaEnergiCoordinator, UtilityData
+from .api import Meter
+from .const import DOMAIN
+from .coordinator import MeterData, UmeaEnergiConfigEntry, UmeaEnergiCoordinator
 
 PARALLEL_UPDATES = 0
 
@@ -25,7 +26,7 @@ PARALLEL_UPDATES = 0
 class UmeaEnergiSensorEntityDescription(SensorEntityDescription):
     """Describes an Umeå Energi sensor."""
 
-    value_fn: Callable[[UtilityData], float | datetime | None]
+    value_fn: Callable[[MeterData], float | datetime | None]
 
 
 # Readings arrive with a delay of up to a day, so these sensors have no state class: hourly
@@ -62,38 +63,46 @@ async def async_setup_entry(
     entry: UmeaEnergiConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up sensors for the utilities the customer has data for."""
+    """Set up sensors for each of the customer's meters."""
     coordinator = entry.runtime_data
     async_add_entities(
-        UmeaEnergiSensor(coordinator, utility, description)
-        for utility in coordinator.data
+        UmeaEnergiSensor(coordinator, meter, description)
+        for meter in coordinator.meters
         for description in SENSORS
     )
 
 
 class UmeaEnergiSensor(CoordinatorEntity[UmeaEnergiCoordinator], SensorEntity):
-    """A consumption value for one utility."""
+    """A consumption value for one meter."""
 
     _attr_has_entity_name = True
 
     def __init__(
         self,
         coordinator: UmeaEnergiCoordinator,
-        utility: Utility,
+        meter: Meter,
         description: UmeaEnergiSensorEntityDescription,
     ) -> None:
         super().__init__(coordinator)
         self.entity_description = description
-        self.utility = utility
+        self.meter = meter
         self._value_fn = description.value_fn
-        self._attr_unique_id = f"{coordinator.customer_code}_{utility}_{description.key}"
+        self._attr_unique_id = f"{meter.key}_{description.key}"
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"{coordinator.customer_code}_{utility}")},
-            translation_key=utility,
+            identifiers={(DOMAIN, meter.key)},
+            translation_key=meter.utility,
+            translation_placeholders={"location": meter.location},
             manufacturer="Umeå Energi",
+            model=meter.meter_point.contract_type,
+            serial_number=meter.meter_point.meter_point_no,
             entry_type=DeviceEntryType.SERVICE,
         )
         self._update_value()
+
+    @property
+    def available(self) -> bool:
+        """Unavailable until the meter has been fetched successfully."""
+        return super().available and self.meter.key in self.coordinator.data
 
     @callback
     def _handle_coordinator_update(self) -> None:
@@ -101,5 +110,5 @@ class UmeaEnergiSensor(CoordinatorEntity[UmeaEnergiCoordinator], SensorEntity):
         super()._handle_coordinator_update()
 
     def _update_value(self) -> None:
-        if (data := self.coordinator.data.get(self.utility)) is not None:
+        if (data := self.coordinator.data.get(self.meter.key)) is not None:
             self._attr_native_value = self._value_fn(data)

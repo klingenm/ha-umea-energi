@@ -1,20 +1,26 @@
 # ha-umea-energi
 
-Home Assistant custom integration (`umea_energi`) that signs in to Umeå Energi's session API
-(BankID or emailed one-time code) and loads electricity and district heating consumption.
-API access goes through [umea-energi-api-client](https://github.com/klingenm/umea-energi-api-client)
-(published on PyPI).
+Home Assistant custom integration (`umea_energi`) that signs in to Umeå Energi (BankID, or email
+and password plus an emailed one-time code) and loads hourly electricity and district heating
+consumption per meter point. All API access goes through
+[umea-energi-api-client](https://github.com/klingenm/umea-energi-api-client) (published on PyPI) and
+its `UmeaEnergiClient`, which owns the login flows, token refresh and every known difference between
+the real API and its OpenAPI document.
 
 ## Layout
 
 - `custom_components/umea_energi/` — the integration
-  - `api.py` — session wrapper over the generated client: BankID/email login, token refresh,
-    hourly consumption. Keep Home Assistant-specific code out of it.
-  - `config_flow.py` — account type (private/business) and sign-in method, BankID progress step,
-    email code, customer choice, reauth, options (update interval)
-  - `coordinator.py` — fetches consumption, imports statistics, summarizes for sensors
-  - `statistics.py` — external long-term statistics (`umea_energi:<utility>_consumption_<customer>`)
-  - `sensor.py` — per-utility sensors (latest day, this month, latest reading)
+  - `api.py` — what the integration adds on top of the library: `UmeaEnergiSession` (fresh
+    credentials, one retry on 401, reports rotated tokens for storage), `Meter` and
+    `meters_from_points` (which contracts become meters), and `parse_readings`. Keep it free of
+    Home Assistant APIs.
+  - `config_flow.py` — account type (private/business) and sign-in method, BankID progress step
+    (QR refreshed every second, order cancelled if abandoned), email + code, reauth, options
+    (update interval)
+  - `coordinator.py` — lists meters once at setup (`_async_setup`), then per meter fetches hourly
+    consumption, imports statistics and summarizes for sensors; data is keyed by `Meter.key`
+  - `statistics.py` — external statistics per meter (`umea_energi:<utility>_consumption_<meter point>`)
+  - `sensor.py` — one device per meter with sensors for latest day, this month and latest reading
   - `translations/` — `en.json` and `sv.json`; keep keys in sync
 - `tests/` — pytest with `pytest-homeassistant-custom-component`
 - `config/` — local dev instance for `mise run hass` (`custom_components` is a symlink)
@@ -78,18 +84,17 @@ Versioning uses [knope](https://knope.tech) change files (like JS changesets); c
 - Type checking is ty via `uv check` (pinned in the `typecheck` task); warnings fail the check.
   Annotate every function, including tests.
 - Ruff line length is 100.
-- Don't hit the real API in tests: mock HTTP with `httpx.MockTransport` in `test_api.py`, and
-  patch `UmeaEnergiApi` methods in Home Assistant tests.
+- Don't hit the real API in tests: use the library's `umea_energi_api_client.testing.FakeApi` in
+  `test_api.py`, and patch `UmeaEnergiClient` methods in Home Assistant tests.
+- API workarounds belong in the library, not here; see "API facts" in its CLAUDE.md.
 - Commit messages follow `type(scope): summary`.
 
 ## Unverified API assumptions
 
-The OpenAPI document leaves these open; check them against the real API before relying on them:
+The library verified login, refresh, meter points and the consumption endpoints against
+production. Still assumed here, for `HOUR` resolution:
 
-- `emailStep1` (email + password) and `emailWithKey` (email only) are assumed to email a code
-  that `emailStep2` exchanges for a session.
-- `qrCode` from BankID may be an image or a QR payload; `config_flow._qr_code_markdown` handles both.
-- `refresh-token` reads the refresh token from the `refreshToken` cookie; its response body is
-  undocumented, so `api._tokens_from_refresh_payload` accepts a session object or a bare token.
-- Consumption without `MeterPointNo` is assumed to cover all of the customer's meter points, and
-  naive timestamps are assumed to be Swedish local time.
+- `period` is an ISO timestamp in Swedish local time marking the start of the hour (only day
+  periods like `"2026-10-01"` have been seen); `parse_readings` skips anything else.
+- `to` is treated as exclusive, so `async_hourly_consumption` asks through the day after `end`
+  and filters the readings to the requested range.

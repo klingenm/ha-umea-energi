@@ -11,7 +11,7 @@
       },
       "email": {
         "title": "Sign in with email",
-        "description": "Umeå Energi will email you a one-time login code. Leave the password empty to sign in with the code only.",
+        "description": "Enter your Mina sidor email and password. Umeå Energi then emails you a one-time login code.",
         "data": {
           "username": "Email",
           "password": "Password"
@@ -27,13 +27,6 @@
       "bankid_failed": {
         "title": "BankID login failed",
         "description": "The BankID login was cancelled, expired or failed. Submit to try again."
-      },
-      "customer": {
-        "title": "Choose customer",
-        "description": "Your login has access to several customers. Choose the one to add.",
-        "data": {
-          "customer_code": "Customer number"
-        }
       },
       "reauth_confirm": {
         "title": "Sign in again",
@@ -51,7 +44,7 @@
     "abort": {
       "already_configured": "This customer is already configured.",
       "cannot_connect": "Failed to connect to Umeå Energi.",
-      "no_customers": "The login has no customers to fetch consumption for.",
+      "no_customers": "The login has no customer to fetch consumption for.",
       "reauth_successful": "Re-authentication was successful.",
       "wrong_account": "The login does not have access to the configured customer."
     }
@@ -71,10 +64,10 @@
   },
   "device": {
     "electricity": {
-      "name": "Umeå Energi electricity"
+      "name": "Umeå Energi electricity {location}"
     },
     "district_heating": {
-      "name": "Umeå Energi district heating"
+      "name": "Umeå Energi district heating {location}"
     }
   },
   "entity": {

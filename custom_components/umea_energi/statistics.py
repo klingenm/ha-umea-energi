@@ -1,5 +1,6 @@
 """Long-term statistics import for hourly consumption, for use in the energy dashboard."""
 
+import re
 from collections import defaultdict
 from datetime import datetime, timedelta
 
@@ -19,7 +20,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 from homeassistant.util.unit_conversion import EnergyConverter
 
-from .api import Reading
+from .api import Meter, Reading
 from .const import DOMAIN, Utility
 
 STATISTIC_NAMES = {
@@ -30,9 +31,10 @@ STATISTIC_NAMES = {
 SUM_LOOKBACK = timedelta(days=7)
 
 
-def statistic_id(utility: Utility, customer_code: str) -> str:
-    """External statistic id for a customer's consumption of a utility."""
-    return f"{DOMAIN}:{utility}_consumption_{customer_code}"
+def statistic_id(meter: Meter) -> str:
+    """External statistic id for a meter's consumption."""
+    meter_point = re.sub(r"[^a-z0-9_]", "_", meter.meter_point.meter_point_no.lower())
+    return f"{DOMAIN}:{meter.utility}_consumption_{meter_point}"
 
 
 async def async_last_statistic_start(hass: HomeAssistant, stat_id: str) -> datetime | None:
@@ -46,7 +48,7 @@ async def async_last_statistic_start(hass: HomeAssistant, stat_id: str) -> datet
 
 
 async def async_import_consumption(
-    hass: HomeAssistant, utility: Utility, customer_code: str, readings: list[Reading]
+    hass: HomeAssistant, meter: Meter, readings: list[Reading]
 ) -> None:
     """Import hourly readings, continuing the running sum from earlier statistics.
 
@@ -59,7 +61,7 @@ async def async_import_consumption(
     if not hourly:
         return
 
-    stat_id = statistic_id(utility, customer_code)
+    stat_id = statistic_id(meter)
     first = min(hourly)
     previous = await get_instance(hass).async_add_executor_job(
         statistics_during_period,
@@ -82,7 +84,7 @@ async def async_import_consumption(
     metadata = StatisticMetaData(
         mean_type=StatisticMeanType.NONE,
         has_sum=True,
-        name=f"Umeå Energi {STATISTIC_NAMES[utility]} {customer_code}",
+        name=f"Umeå Energi {STATISTIC_NAMES[meter.utility]} {meter.location}",
         source=DOMAIN,
         statistic_id=stat_id,
         unit_class=EnergyConverter.UNIT_CLASS,

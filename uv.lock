@@ -1130,7 +1130,6 @@ name = "ha-umea-energi"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
-    { name = "segno" },
     { name = "umea-energi-api-client" },
 ]
 
@@ -1141,10 +1140,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [
-    { name = "segno", specifier = ">=1.6.6" },
-    { name = "umea-energi-api-client", specifier = ">=0.1.0" },
-]
+requires-dist = [{ name = "umea-energi-api-client", specifier = ">=0.1.1" }]
 
 [package.metadata.requires-dev]
 dev = [
@@ -2781,15 +2777,6 @@ wheels = [
 ]
 
 [[package]]
-name = "segno"
-version = "1.6.6"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/1c/2e/b396f750c53f570055bf5a9fc1ace09bed2dff013c73b7afec5702a581ba/segno-1.6.6.tar.gz", hash = "sha256:e60933afc4b52137d323a4434c8340e0ce1e58cec71439e46680d4db188f11b3", size = 1628586, upload-time = "2025-03-12T22:12:53.324Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/d6/02/12c73fd423eb9577b97fc1924966b929eff7074ae6b2e15dd3d30cb9e4ae/segno-1.6.6-py3-none-any.whl", hash = "sha256:28c7d081ed0cf935e0411293a465efd4d500704072cdb039778a2ab8736190c7", size = 76503, upload-time = "2025-03-12T22:12:48.106Z" },
-]
-
-[[package]]
 name = "sentence-stream"
 version = "1.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3045,15 +3032,15 @@ wheels = [
 
 [[package]]
 name = "umea-energi-api-client"
-version = "0.1.0"
+version = "0.1.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "attrs" },
     { name = "httpx" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4d/45/1ee9db408292da60c9cef323069be39cce643a458763ed3e890f0fefa449/umea_energi_api_client-0.1.0.tar.gz", hash = "sha256:2cd89204c4f0294db23d7b00b40e918ee10aea2bb593e1022a15f1fb6f17e577", size = 232057, upload-time = "2026-10-24T21:19:31.604Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/02/40/ad2960d7d47d42adc6b9c68a318a20d36896af8c7075b3f1fdfc81160c05/umea_energi_api_client-0.1.1.tar.gz", hash = "sha256:3e3f5fb7eb9baa4bb891eeb3791580ed57ed62f461d92e889cced97295f59c47", size = 243935, upload-time = "2026-10-25T11:53:19.259Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/3c/45/ca6f480cd38cc8a48c7bbf6c2a21316a076d21eeb07b236890d8143c2df0/umea_energi_api_client-0.1.0-py3-none-any.whl", hash = "sha256:8c1e96d188dc50a5a6186418a3098c357049b632d1b677782efa7961c8661d36", size = 639048, upload-time = "2026-10-24T21:19:30.109Z" },
+    { url = "https://files.pythonhosted.org/packages/e0/0c/50848029786625c94c44ad40e5692b4c2cb6e1fd7add24478ab28dbd55e0/umea_energi_api_client-0.1.1-py3-none-any.whl", hash = "sha256:7aa83168de5082fee701aeca335b3397fe250d08f9d9916ebeecc47c26d9e5e6", size = 653192, upload-time = "2026-10-25T11:53:17.707Z" },
 ]
 
 [[package]]

@@ -5,11 +5,11 @@ from datetime import timedelta
 from enum import StrEnum
 from zoneinfo import ZoneInfo
 
+from umea_energi_api_client import CustomerType
+
 DOMAIN = "umea_energi"
 LOGGER = logging.getLogger(__package__)
 
-BASE_URL = "https://tapi.umeaenergi.se"
-API_VERSION = "2"
 # Naive timestamps from the API are local Swedish time.
 API_TIMEZONE = ZoneInfo("Europe/Stockholm")
 
@@ -17,6 +17,7 @@ CONF_ACCOUNT_TYPE = "account_type"
 CONF_AUTH_METHOD = "auth_method"
 CONF_ACCESS_TOKEN = "access_token"
 CONF_REFRESH_TOKEN = "refresh_token"
+CONF_REFRESH_TOKEN_EXPIRES_AT = "refresh_token_expires_at"
 CONF_CUSTOMER_CODE = "customer_code"
 CONF_ACTIVATION_KEY = "activation_key"
 CONF_UPDATE_INTERVAL = "update_interval"
@@ -37,6 +38,11 @@ class AccountType(StrEnum):
 
     PRIVATE = "private"
     BUSINESS = "business"
+
+    @property
+    def customer_type(self) -> CustomerType:
+        """The library's customer type, sent as `type` when logging in."""
+        return CustomerType.COMPANY if self is AccountType.BUSINESS else CustomerType.PRIVATE
 
 
 class AuthMethod(StrEnum):

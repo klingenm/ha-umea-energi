@@ -1,234 +1,197 @@
-"""Tests for the API session wrapper."""
+"""Tests for credentials, meters and the consumption session."""
 
-import json
-from collections.abc import Callable
 from datetime import UTC, datetime
 
 import httpx
 import pytest
+from umea_energi_api_client import Credentials, MeterPoint, TokenExpiredError, UmeaEnergiClient
+from umea_energi_api_client.testing import FakeApi
 
-from custom_components.umea_energi.api import Tokens, UmeaEnergiApi, UmeaEnergiAuthError
-from custom_components.umea_energi.const import BASE_URL, AccountType, Utility
+from custom_components.umea_energi.api import (
+    Meter,
+    Reading,
+    UmeaEnergiSession,
+    credentials_from_data,
+    credentials_to_data,
+    meters_from_points,
+    parse_readings,
+)
+from custom_components.umea_energi.const import Utility
 
 from .conftest import make_jwt
 
-type Handler = Callable[[httpx.Request], httpx.Response]
-
-LOGIN_SESSION = {
-    "completed": True,
-    "token": {"accessJwtToken": "access-1"},
-    "user": {
-        "firstName": "Anna",
-        "lastName": "Svensson",
-        "defaultCustomerCode": "111",
-        "customer": {"code": "111"},
-        "myCustomers": [{"customerCode": 222}],
-        "refreshToken": {"token": "refresh-1"},
-    },
-}
+CONSUMPTION_PATH = "/api/v1/Customer/128/electricityConsumption/ELECTRICITY_GRID"
+REFRESH_PATH = "/api/v1/Session/refresh-token"
 
 
-def make_api(
-    handler: Handler,
-    tokens: Tokens | None = None,
-    on_tokens_refreshed: Callable[[Tokens], None] | None = None,
-) -> UmeaEnergiApi:
-    http = httpx.AsyncClient(base_url=BASE_URL, transport=httpx.MockTransport(handler))
-    return UmeaEnergiApi(http, tokens, on_tokens_refreshed)
-
-
-async def test_bankid_login() -> None:
-    requests: list[httpx.Request] = []
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        requests.append(request)
-        if request.url.path == "/api/v2/Session/bankid":
-            return httpx.Response(
-                200, json={"id": "ref", "autoStartToken": "ast", "qrCode": "qr-1"}
-            )
-        if request.url.path == "/api/v2/Session/bankid/ref/0":
-            if len(requests) == 2:
-                return httpx.Response(200, json={"completed": False, "qrCode": "qr-2"})
-            return httpx.Response(200, json=LOGIN_SESSION)
-        return httpx.Response(404)
-
-    api = make_api(handler)
-
-    started = await api.async_start_bankid(AccountType.PRIVATE)
-    pending = await api.async_poll_bankid(started.reference, AccountType.PRIVATE)
-    completed = await api.async_poll_bankid(started.reference, AccountType.PRIVATE)
-
-    assert (started.reference, started.auto_start_token, started.qr_code) == ("ref", "ast", "qr-1")
-    assert json.loads(requests[0].content) == {"type": 0}
-    assert pending.login is None
-    assert pending.qr_code == "qr-2"
-    assert completed.login is not None
-    assert completed.login.tokens == Tokens("access-1", "refresh-1")
-    assert completed.login.customer_codes == ["111", "222"]
-    assert completed.login.name == "Anna Svensson"
-    assert api.tokens == Tokens("access-1", "refresh-1")
-
-
-async def test_business_login_type() -> None:
-    requests: list[httpx.Request] = []
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        requests.append(request)
-        return httpx.Response(200, json={"id": "ref", "completed": False})
-
-    api = make_api(handler)
-    await api.async_start_bankid(AccountType.BUSINESS)
-    await api.async_poll_bankid("ref", AccountType.BUSINESS)
-
-    assert json.loads(requests[0].content) == {"type": 1}
-    assert requests[1].url.path == "/api/v2/Session/bankid/ref/1"
-
-
-async def test_bankid_poll_failure_is_auth_error() -> None:
-    api = make_api(lambda request: httpx.Response(400))
-
-    with pytest.raises(UmeaEnergiAuthError):
-        await api.async_poll_bankid("ref", AccountType.PRIVATE)
-
-
-@pytest.mark.parametrize(
-    ("password", "path"),
-    [("secret", "/api/v2/Session/emailStep1"), (None, "/api/v2/Session/emailWithKey")],
-)
-async def test_request_email_code(password: str | None, path: str) -> None:
-    requests: list[httpx.Request] = []
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        requests.append(request)
-        return httpx.Response(200)
-
-    await make_api(handler).async_request_email_code(
-        "anna@example.com", password, AccountType.PRIVATE
+def meter_point(contract_type: str, number: str = "735") -> MeterPoint:
+    return MeterPoint(
+        contract_type=contract_type,
+        meter_point_no=number,
+        customer_code="128",
+        address="Street 1",
+        contract_id=None,
     )
 
-    assert requests[0].url.path == path
-    body = json.loads(requests[0].content)
-    assert body["username"] == "anna@example.com"
-    assert body.get("password") == password
+
+GRID_METER = Meter(Utility.ELECTRICITY, meter_point("ELECTRICITY_GRID"))
 
 
-async def test_email_code_login() -> None:
-    requests: list[httpx.Request] = []
+def make_session(
+    fake: FakeApi, credentials: Credentials, changed: list[Credentials]
+) -> UmeaEnergiSession:
+    client = UmeaEnergiClient("https://api.test", httpx_args={"transport": fake.transport})
+    return UmeaEnergiSession(client, credentials, changed.append)
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        requests.append(request)
-        return httpx.Response(200, json=LOGIN_SESSION)
 
-    login = await make_api(handler).async_login_email_code(
-        "anna@example.com", "1234", AccountType.PRIVATE
+def test_credentials_round_trip() -> None:
+    credentials = Credentials(
+        access_token="access",
+        refresh_token="refresh",
+        refresh_token_expires_at=datetime(2027, 10, 25, tzinfo=UTC),
     )
 
-    assert requests[0].url.path == "/api/v2/Session/emailStep2"
-    assert json.loads(requests[0].content) == {
-        "username": "anna@example.com",
-        "activationKey": "1234",
-        "type": 0,
-    }
-    assert login.tokens == Tokens("access-1", "refresh-1")
+    assert credentials_from_data(credentials_to_data(credentials)) == credentials
 
 
-async def test_rejected_email_code() -> None:
-    api = make_api(lambda request: httpx.Response(400))
+def test_meters_prefer_grid_contracts() -> None:
+    points = [
+        meter_point("ELECTRICITY_GRID", "735"),
+        meter_point("ELECTRICITY", "735"),  # same meter as the grid contract
+        meter_point("ELECTRICITY", "736"),  # supply only; another company owns the grid
+        meter_point("DISTRICT_HEATING", "900"),
+        meter_point("BROADBAND", "1"),
+    ]
 
-    with pytest.raises(UmeaEnergiAuthError):
-        await api.async_login_email_code("anna@example.com", "0000", AccountType.PRIVATE)
+    meters = meters_from_points(points)
+
+    assert [(m.utility, m.meter_point.contract_type, m.key) for m in meters] == [
+        (Utility.ELECTRICITY, "ELECTRICITY_GRID", "electricity_735"),
+        (Utility.ELECTRICITY, "ELECTRICITY", "electricity_736"),
+        (Utility.DISTRICT_HEATING, "DISTRICT_HEATING", "district_heating_900"),
+    ]
+    assert meters[0].location == "Street 1"
 
 
-async def test_consumption_converts_local_times() -> None:
-    requests: list[httpx.Request] = []
+def test_parse_readings() -> None:
+    readings = parse_readings(
+        {
+            "consumption": [
+                {"period": "2026-10-23T01:00:00", "value": 2},
+                {"period": "2026-10-23T00:00:00", "value": 1.5},  # local time, out of order
+                {"period": "2026-10-23T02:00:00+00:00", "value": 3.0},
+                {"period": "not a date", "value": 1.0},
+                {"period": "2026-10-23T03:00:00", "value": None},
+                {"period": "2026-10-23T04:00:00", "value": True},
+                "junk",
+            ]
+        }
+    )
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        requests.append(request)
-        return httpx.Response(
+    assert readings == [
+        Reading(datetime(2026, 10, 22, 22, tzinfo=UTC), 1.5),
+        Reading(datetime(2026, 10, 22, 23, tzinfo=UTC), 2.0),
+        Reading(datetime(2026, 10, 23, 2, tzinfo=UTC), 3.0),
+    ]
+    assert parse_readings([]) == []
+    assert parse_readings({"consumption": None}) == []
+
+
+async def test_hourly_consumption_asks_for_whole_days() -> None:
+    fake = FakeApi()
+    fake.add(
+        "GET",
+        CONSUMPTION_PATH,
+        httpx.Response(
             200,
             json={
                 "consumption": [
-                    {"period": "2026-10-23T01:00:00", "value": 2.5},
-                    {"period": "2026-10-23T00:00:00", "value": 1.5},
+                    {"period": "2026-10-22T23:00:00", "value": 9.0},  # before start
+                    {"period": "2026-10-23T00:00:00", "value": 1.0},
+                    {"period": "2026-10-23T01:00:00", "value": 2.0},
                 ]
             },
-        )
+        ),
+    )
+    session = make_session(fake, Credentials(access_token=make_jwt()), [])
 
-    api = make_api(handler, Tokens(make_jwt(), "refresh-1"))
-    readings = await api.async_get_consumption(
-        Utility.DISTRICT_HEATING,
-        "111",
-        datetime(2026, 10, 22, 22, tzinfo=UTC),
-        datetime(2026, 10, 23, 22, tzinfo=UTC),
+    readings = await session.async_hourly_consumption(
+        GRID_METER,
+        datetime(2026, 10, 22, 22, tzinfo=UTC),  # midnight 23 October, local time
+        datetime(2026, 10, 23, 12, tzinfo=UTC),
     )
 
-    request = requests[0]
-    assert request.url.path == "/api/v2/Customer/111/heatingConsumption"
+    [request] = fake.requests
     assert request.url.params["From"] == "2026-10-23T00:00:00"
     assert request.url.params["To"] == "2026-10-24T00:00:00"
     assert request.url.params["Resolution"] == "HOUR"
-    assert request.headers["Authorization"].startswith("Bearer ")
-    assert [(r.start, r.value) for r in readings] == [
-        (datetime(2026, 10, 22, 22, tzinfo=UTC), 1.5),
-        (datetime(2026, 10, 22, 23, tzinfo=UTC), 2.5),
-    ]
+    assert request.url.params["MeterPointNo"] == "735"
+    assert [r.value for r in readings] == [1.0, 2.0]
 
 
-async def test_refreshes_token_when_rejected() -> None:
-    requests: list[httpx.Request] = []
-    refreshed: list[Tokens] = []
+async def test_refreshes_expiring_token_and_reports_it() -> None:
+    fake = FakeApi()
+    new_token = make_jwt()
+    fake.add(
+        "POST",
+        REFRESH_PATH,
+        httpx.Response(
+            200,
+            json={"token": {"access_token": new_token}},
+            headers={"set-cookie": "refreshToken=refresh-2; path=/; secure; httponly"},
+        ),
+    )
+    fake.add("GET", CONSUMPTION_PATH, httpx.Response(200, json={"consumption": []}))
+    changed: list[Credentials] = []
+    old = Credentials(access_token=make_jwt(expires_in=10), refresh_token="refresh-1")
+    session = make_session(fake, old, changed)
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        requests.append(request)
-        if request.url.path == "/api/v2/Session/refresh-token":
-            return httpx.Response(
-                200,
-                json={
-                    "token": {"accessJwtToken": "access-2"},
-                    "user": {"refreshToken": {"token": "refresh-2"}},
-                },
-            )
-        if request.headers["Authorization"] == "Bearer access-2":
-            return httpx.Response(200, json={"consumption": []})
-        return httpx.Response(401)
-
-    api = make_api(handler, Tokens("access-1", "refresh-1"), refreshed.append)
     now = datetime.now(UTC)
-    await api.async_get_consumption(Utility.ELECTRICITY, "111", now, now)
+    await session.async_hourly_consumption(GRID_METER, now, now)
 
-    assert [r.url.path for r in requests] == [
-        "/api/v2/Customer/111/electricityConsumption",
-        "/api/v2/Session/refresh-token",
-        "/api/v2/Customer/111/electricityConsumption",
-    ]
-    assert requests[1].headers["Cookie"] == "refreshToken=refresh-1"
-    assert refreshed == [Tokens("access-2", "refresh-2")]
+    refresh, consumption = fake.requests
+    assert refresh.headers["cookie"] == "refreshToken=refresh-1"
+    assert consumption.headers["authorization"] == f"Bearer {new_token}"
+    assert [(c.access_token, c.refresh_token) for c in changed] == [(new_token, "refresh-2")]
 
 
-async def test_refreshes_expiring_token_before_request() -> None:
-    requests: list[httpx.Request] = []
+async def test_retries_once_after_a_rejected_token() -> None:
+    fake = FakeApi()
+    new_token = make_jwt()
+    fake.add("POST", REFRESH_PATH, httpx.Response(200, json={"token": {"access_token": new_token}}))
+    fake.add(
+        "GET",
+        CONSUMPTION_PATH,
+        httpx.Response(401),
+        httpx.Response(200, json={"consumption": []}),
+    )
+    changed: list[Credentials] = []
+    session = make_session(
+        fake, Credentials(access_token=make_jwt(), refresh_token="refresh-1"), changed
+    )
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        requests.append(request)
-        if request.url.path == "/api/v2/Session/refresh-token":
-            # Bare token body; the new refresh token comes as a cookie.
-            return httpx.Response(
-                200, text="access-2", headers={"Set-Cookie": "refreshToken=refresh-2; Path=/"}
-            )
-        return httpx.Response(200, json={"consumption": []})
-
-    api = make_api(handler, Tokens(make_jwt(expires_in=10), "refresh-1"))
     now = datetime.now(UTC)
-    await api.async_get_consumption(Utility.ELECTRICITY, "111", now, now)
+    await session.async_hourly_consumption(GRID_METER, now, now)
 
-    assert requests[0].url.path == "/api/v2/Session/refresh-token"
-    assert requests[1].headers["Authorization"] == "Bearer access-2"
-    assert api.tokens == Tokens("access-2", "refresh-2")
+    assert [r.url.path for r in fake.requests] == [CONSUMPTION_PATH, REFRESH_PATH, CONSUMPTION_PATH]
+    assert changed[0].access_token == new_token
+    assert changed[0].refresh_token == "refresh-1"  # not rotated
 
 
-async def test_rejected_without_refresh_token() -> None:
-    api = make_api(lambda request: httpx.Response(401), Tokens("access-1", None))
+@pytest.mark.parametrize(
+    "credentials",
+    [
+        # Expired, and the refresh token is rejected.
+        Credentials(access_token=make_jwt(expires_in=-10), refresh_token="revoked"),
+        # Expired, and nothing to refresh with.
+        Credentials(access_token=make_jwt(expires_in=-10)),
+    ],
+)
+async def test_session_that_cannot_be_renewed(credentials: Credentials) -> None:
+    fake = FakeApi()
+    fake.add("POST", REFRESH_PATH, httpx.Response(401))
+    session = make_session(fake, credentials, [])
+
     now = datetime.now(UTC)
-
-    with pytest.raises(UmeaEnergiAuthError):
-        await api.async_get_consumption(Utility.ELECTRICITY, "111", now, now)
+    with pytest.raises(TokenExpiredError):
+        await session.async_hourly_consumption(GRID_METER, now, now)

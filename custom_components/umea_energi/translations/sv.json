@@ -11,7 +11,7 @@
       },
       "email": {
         "title": "Logga in med e-post",
-        "description": "Umeå Energi skickar en engångskod till din e-post. Lämna lösenordet tomt för att logga in med enbart kod.",
+        "description": "Ange e-post och lösenord för Mina sidor. Umeå Energi skickar sedan en engångskod till din e-post.",
         "data": {
           "username": "E-post",
           "password": "Lösenord"
@@ -27,13 +27,6 @@
       "bankid_failed": {
         "title": "BankID-inloggningen misslyckades",
         "description": "BankID-inloggningen avbröts, gick ut eller misslyckades. Skicka för att försöka igen."
-      },
-      "customer": {
-        "title": "Välj kund",
-        "description": "Din inloggning har tillgång till flera kunder. Välj vilken som ska läggas till.",
-        "data": {
-          "customer_code": "Kundnummer"
-        }
       },
       "reauth_confirm": {
         "title": "Logga in igen",
@@ -51,7 +44,7 @@
     "abort": {
       "already_configured": "Kunden är redan konfigurerad.",
       "cannot_connect": "Kunde inte ansluta till Umeå Energi.",
-      "no_customers": "Inloggningen har inga kunder att hämta förbrukning för.",
+      "no_customers": "Inloggningen har ingen kund att hämta förbrukning för.",
       "reauth_successful": "Återautentiseringen lyckades.",
       "wrong_account": "Inloggningen har inte tillgång till den konfigurerade kunden."
     }
@@ -71,10 +64,10 @@
   },
   "device": {
     "electricity": {
-      "name": "Umeå Energi el"
+      "name": "Umeå Energi el {location}"
     },
     "district_heating": {
-      "name": "Umeå Energi fjärrvärme"
+      "name": "Umeå Energi fjärrvärme {location}"
     }
   },
   "entity": {

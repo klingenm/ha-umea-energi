@@ -15,6 +15,7 @@ from custom_components.umea_energi.const import (
     CONF_AUTH_METHOD,
     CONF_CUSTOMER_CODE,
     CONF_REFRESH_TOKEN,
+    CONF_REFRESH_TOKEN_EXPIRES_AT,
     DOMAIN,
     AccountType,
     AuthMethod,
@@ -59,5 +60,6 @@ def mock_config_entry() -> MockConfigEntry:
             CONF_CUSTOMER_CODE: CUSTOMER_CODE,
             CONF_ACCESS_TOKEN: make_jwt(),
             CONF_REFRESH_TOKEN: "refresh-token",
+            CONF_REFRESH_TOKEN_EXPIRES_AT: None,
         },
     )

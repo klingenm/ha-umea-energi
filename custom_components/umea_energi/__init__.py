@@ -2,9 +2,9 @@
 
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, callback
+from umea_energi_api_client import Credentials
 
-from .api import Tokens, UmeaEnergiApi, create_http_client
-from .const import CONF_ACCESS_TOKEN, CONF_REFRESH_TOKEN
+from .api import UmeaEnergiSession, create_client, credentials_from_data, credentials_to_data
 from .coordinator import UmeaEnergiConfigEntry, UmeaEnergiCoordinator
 
 PLATFORMS = [Platform.SENSOR]
@@ -12,26 +12,18 @@ PLATFORMS = [Platform.SENSOR]
 
 async def async_setup_entry(hass: HomeAssistant, entry: UmeaEnergiConfigEntry) -> bool:
     """Set up Umeå Energi from a config entry."""
-    http = create_http_client()
-    entry.async_on_unload(http.aclose)
 
     @callback
-    def _store_tokens(tokens: Tokens) -> None:
+    def _store_credentials(credentials: Credentials) -> None:
+        # A refresh may rotate the refresh token; the old one stops working.
         hass.config_entries.async_update_entry(
-            entry,
-            data={
-                **entry.data,
-                CONF_ACCESS_TOKEN: tokens.access_token,
-                CONF_REFRESH_TOKEN: tokens.refresh_token,
-            },
+            entry, data={**entry.data, **credentials_to_data(credentials)}
         )
 
-    api = UmeaEnergiApi(
-        http,
-        Tokens(entry.data[CONF_ACCESS_TOKEN], entry.data.get(CONF_REFRESH_TOKEN)),
-        on_tokens_refreshed=_store_tokens,
+    session = UmeaEnergiSession(
+        create_client(), credentials_from_data(entry.data), _store_credentials
     )
-    coordinator = UmeaEnergiCoordinator(hass, entry, api)
+    coordinator = UmeaEnergiCoordinator(hass, entry, session)
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
 

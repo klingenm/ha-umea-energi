@@ -1,13 +1,11 @@
-"""Config flow for Umeå Energi: sign in with BankID or an emailed one-time code."""
+"""Config flow for Umeå Energi: sign in with BankID or email and an emailed one-time code."""
 
 import asyncio
 import time
 from collections.abc import Mapping
 from typing import Any, override
 
-import httpx
 import probatio
-import segno
 from homeassistant.config_entries import (
     SOURCE_REAUTH,
     ConfigEntry,
@@ -27,22 +25,20 @@ from homeassistant.helpers.selector import (
     TextSelectorConfig,
     TextSelectorType,
 )
-
-from .api import (
-    BankIdSession,
+from umea_energi_api_client import (
+    ApiError,
+    BankIdProgress,
+    InvalidCredentialsError,
     Login,
-    UmeaEnergiApi,
-    UmeaEnergiAuthError,
     UmeaEnergiError,
-    create_http_client,
 )
+
+from .api import create_client, credentials_to_data
 from .const import (
-    CONF_ACCESS_TOKEN,
     CONF_ACCOUNT_TYPE,
     CONF_ACTIVATION_KEY,
     CONF_AUTH_METHOD,
     CONF_CUSTOMER_CODE,
-    CONF_REFRESH_TOKEN,
     CONF_UPDATE_INTERVAL,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
@@ -53,8 +49,9 @@ from .const import (
     AuthMethod,
 )
 
-# Seconds between BankID status checks; each check also refreshes the QR code.
-BANKID_POLL_INTERVAL = 2.0
+# Seconds between BankID status checks. BankID's QR code changes every second, and each check
+# returns the current one.
+BANKID_POLL_INTERVAL = 1.0
 # Give up waiting for the user to sign after this many seconds.
 BANKID_TIMEOUT = 300.0
 
@@ -73,7 +70,7 @@ STEP_EMAIL_SCHEMA = probatio.Schema(
         probatio.Required(CONF_USERNAME): TextSelector(
             TextSelectorConfig(type=TextSelectorType.EMAIL, autocomplete="username")
         ),
-        probatio.Optional(CONF_PASSWORD): TextSelector(
+        probatio.Required(CONF_PASSWORD): TextSelector(
             TextSelectorConfig(type=TextSelectorType.PASSWORD, autocomplete="current-password")
         ),
     }
@@ -107,13 +104,12 @@ class UmeaEnergiConfigFlow(ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         """Initialize the config flow."""
-        self._http: httpx.AsyncClient | None = None
-        self._api: UmeaEnergiApi | None = None
+        self._client = create_client()
         self._account_type = AccountType.PRIVATE
         self._auth_method = AuthMethod.BANKID
         self._username: str | None = None
-        self._bankid: BankIdSession | None = None
-        self._bankid_task: asyncio.Task[BankIdSession] | None = None
+        self._bankid: BankIdProgress | None = None
+        self._bankid_task: asyncio.Task[BankIdProgress] | None = None
         self._bankid_deadline = 0.0
         self._login: Login | None = None
 
@@ -146,7 +142,7 @@ class UmeaEnergiConfigFlow(ConfigFlow, domain=DOMAIN):
         """Sign in with BankID, polling until the user has signed in the BankID app."""
         if self._bankid is None:
             try:
-                self._bankid = await self._get_api().async_start_bankid(self._account_type)
+                self._bankid = await self._client.start_bankid(self._account_type.customer_type)
             except UmeaEnergiError as err:
                 LOGGER.error("Could not start BankID login: %s", err)
                 return self.async_abort(reason="cannot_connect")
@@ -175,9 +171,10 @@ class UmeaEnergiConfigFlow(ConfigFlow, domain=DOMAIN):
             self._login = login
             return self.async_show_progress_done(next_step_id="finish_login")
         if time.monotonic() > self._bankid_deadline:
+            await self._async_cancel_bankid(self._bankid.reference)
             self._bankid = None
             return self.async_show_progress_done(next_step_id="bankid_failed")
-        # Still pending: poll again, showing the refreshed QR code.
+        # Still pending: poll again, showing the current QR code.
         return await self.async_step_bankid()
 
     async def async_step_bankid_failed(
@@ -189,18 +186,18 @@ class UmeaEnergiConfigFlow(ConfigFlow, domain=DOMAIN):
         return await self.async_step_bankid()
 
     async def async_step_email(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        """Ask for the email address (and optional password) to send a login code to."""
+        """Check the email and password; Umeå Energi then emails a one-time code."""
         errors: dict[str, str] = {}
         if user_input is not None:
             self._username = user_input[CONF_USERNAME].strip()
             try:
-                await self._get_api().async_request_email_code(
-                    self._username, user_input.get(CONF_PASSWORD) or None, self._account_type
+                await self._client.start_email_login(
+                    self._username, user_input[CONF_PASSWORD], self._account_type.customer_type
                 )
-            except UmeaEnergiAuthError:
+            except InvalidCredentialsError:
                 errors["base"] = "invalid_auth"
             except UmeaEnergiError as err:
-                LOGGER.error("Could not request login code: %s", err)
+                LOGGER.error("Could not start email login: %s", err)
                 errors["base"] = "cannot_connect"
             else:
                 return await self.async_step_email_code()
@@ -222,11 +219,17 @@ class UmeaEnergiConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             try:
-                self._login = await self._get_api().async_login_email_code(
-                    self._username, user_input[CONF_ACTIVATION_KEY].strip(), self._account_type
+                self._login = await self._client.complete_email_login(
+                    self._username,
+                    user_input[CONF_ACTIVATION_KEY],
+                    self._account_type.customer_type,
                 )
-            except UmeaEnergiAuthError:
-                errors["base"] = "invalid_code"
+            except ApiError as err:
+                if err.status_code is not None and 400 <= err.status_code < 500:
+                    errors["base"] = "invalid_code"
+                else:
+                    LOGGER.error("Could not complete email login: %s", err)
+                    errors["base"] = "cannot_connect"
             except UmeaEnergiError as err:
                 LOGGER.error("Could not complete email login: %s", err)
                 errors["base"] = "cannot_connect"
@@ -243,37 +246,28 @@ class UmeaEnergiConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_finish_login(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Pick the customer to set up once logged in."""
+        """Create the entry for the logged-in customer, or update it when reauthenticating."""
         assert self._login is not None
-        customer_codes = self._login.customer_codes
-        if not customer_codes:
+        user = self._login.user
+        if user is None or not user.customer_code:
             return self.async_abort(reason="no_customers")
-        if self.source == SOURCE_REAUTH:
-            customer_code = self._get_reauth_entry().data[CONF_CUSTOMER_CODE]
-            if customer_code not in customer_codes:
-                return self.async_abort(reason="wrong_account")
-            return await self._async_finish(customer_code)
-        if len(customer_codes) == 1:
-            return await self._async_finish(customer_codes[0])
-        return await self.async_step_customer()
+        customer_code = user.customer_code
 
-    async def async_step_customer(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Let the user choose between the customers their login has access to."""
-        assert self._login is not None
-        if user_input is not None:
-            return await self._async_finish(user_input[CONF_CUSTOMER_CODE])
-        return self.async_show_form(
-            step_id="customer",
-            data_schema=probatio.Schema(
-                {
-                    probatio.Required(CONF_CUSTOMER_CODE): SelectSelector(
-                        SelectSelectorConfig(options=self._login.customer_codes)
-                    )
-                }
-            ),
-        )
+        data: dict[str, Any] = {
+            CONF_ACCOUNT_TYPE: self._account_type,
+            CONF_AUTH_METHOD: self._auth_method,
+            CONF_CUSTOMER_CODE: customer_code,
+            **credentials_to_data(self._login.credentials),
+        }
+        if self._username is not None:
+            data[CONF_USERNAME] = self._username
+
+        await self.async_set_unique_id(customer_code)
+        if self.source == SOURCE_REAUTH:
+            self._abort_if_unique_id_mismatch(reason="wrong_account")
+            return self.async_update_reload_and_abort(self._get_reauth_entry(), data_updates=data)
+        self._abort_if_unique_id_configured()
+        return self.async_create_entry(title=f"Umeå Energi {customer_code}", data=data)
 
     async def async_step_reauth(self, entry_data: Mapping[str, Any]) -> ConfigFlowResult:
         """Handle an expired session."""
@@ -290,39 +284,21 @@ class UmeaEnergiConfigFlow(ConfigFlow, domain=DOMAIN):
     @callback
     @override
     def async_remove(self) -> None:
-        """Clean up when the flow is finished or aborted."""
+        """Stop polling, and cancel a BankID order the user never completed."""
         if self._bankid_task is not None:
             self._bankid_task.cancel()
-        if self._http is not None:
-            self.hass.async_create_task(self._http.aclose())
+        if self._bankid is not None and self._bankid.login is None:
+            self.hass.async_create_task(self._async_cancel_bankid(self._bankid.reference))
 
-    async def _async_finish(self, customer_code: str) -> ConfigFlowResult:
-        assert self._login is not None
-        data: dict[str, Any] = {
-            CONF_ACCOUNT_TYPE: self._account_type,
-            CONF_AUTH_METHOD: self._auth_method,
-            CONF_CUSTOMER_CODE: customer_code,
-            CONF_ACCESS_TOKEN: self._login.tokens.access_token,
-            CONF_REFRESH_TOKEN: self._login.tokens.refresh_token,
-        }
-        if self._username is not None:
-            data[CONF_USERNAME] = self._username
-
-        await self.async_set_unique_id(customer_code)
-        if self.source == SOURCE_REAUTH:
-            return self.async_update_reload_and_abort(self._get_reauth_entry(), data_updates=data)
-        self._abort_if_unique_id_configured()
-        return self.async_create_entry(title=f"Umeå Energi {customer_code}", data=data)
-
-    async def _async_poll_bankid(self, reference: str) -> BankIdSession:
+    async def _async_poll_bankid(self, reference: str) -> BankIdProgress:
         await asyncio.sleep(BANKID_POLL_INTERVAL)
-        return await self._get_api().async_poll_bankid(reference, self._account_type)
+        return await self._client.poll_bankid(reference, self._account_type.customer_type)
 
-    def _get_api(self) -> UmeaEnergiApi:
-        if self._api is None:
-            self._http = create_http_client()
-            self._api = UmeaEnergiApi(self._http)
-        return self._api
+    async def _async_cancel_bankid(self, reference: str) -> None:
+        try:
+            await self._client.cancel_bankid(reference, self._account_type.customer_type)
+        except UmeaEnergiError as err:
+            LOGGER.debug("Could not cancel BankID order: %s", err)
 
 
 class UmeaEnergiOptionsFlow(OptionsFlowWithReload):
@@ -340,26 +316,19 @@ class UmeaEnergiOptionsFlow(OptionsFlowWithReload):
         )
 
 
-def _bankid_placeholders(session: BankIdSession) -> dict[str, str]:
+def _bankid_placeholders(progress: BankIdProgress) -> dict[str, str]:
     return {
         "auto_start_url": (
-            f"https://app.bankid.com/?autostarttoken={session.auto_start_token or ''}&redirect=null"
+            f"https://app.bankid.com/?autostarttoken={progress.auto_start_token or ''}"
+            "&redirect=null"
         ),
-        "qr_code": _qr_code_markdown(session.qr_code),
+        "qr_code": _qr_code_markdown(progress.qr_code),
     }
 
 
 def _qr_code_markdown(qr_code: str | None) -> str:
-    """Render the BankID QR code as a markdown image.
-
-    The API's `qrCode` is either an image (data URI or base64 PNG) or the QR payload itself.
-    """
+    """Render the BankID QR code, a base64-encoded SVG, as a markdown image."""
     if not qr_code:
         return ""
-    if qr_code.startswith("data:image/"):
-        uri = qr_code
-    elif qr_code.startswith("iVBOR"):  # base64-encoded PNG signature
-        uri = f"data:image/png;base64,{qr_code}"
-    else:
-        uri = segno.make(qr_code, error="l").png_data_uri(scale=6, border=2)
+    uri = qr_code if qr_code.startswith("data:image/") else f"data:image/svg+xml;base64,{qr_code}"
     return f"![BankID QR code]({uri})"
